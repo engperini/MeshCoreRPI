@@ -306,12 +306,19 @@ chown -R raspberrypimc:raspberrypimc /var/lib/raspberrypimc || true
 chown -R raspberrypimc:raspberrypimc /etc/raspberrypimc || true
 systemctl daemon-reload || true
 systemctl enable raspberrypimc-${ROLE}.service || true
+# Upgrade (\$2 = previous version): prerm stopped the service, start it again.
+if [[ "\${1:-}" == "configure" && -n "\${2:-}" ]]; then
+  systemctl restart raspberrypimc-${ROLE}.service || true
+fi
 EOF
 
 cat > "$PKG_ROOT/DEBIAN/prerm" <<EOF
 #!/usr/bin/env bash
 set -e
-systemctl disable raspberrypimc-${ROLE}.service >/dev/null 2>&1 || true
+# Keep the service enabled across upgrades; only disable it on removal.
+if [[ "\${1:-}" == "remove" ]]; then
+  systemctl disable raspberrypimc-${ROLE}.service >/dev/null 2>&1 || true
+fi
 systemctl stop raspberrypimc-${ROLE}.service >/dev/null 2>&1 || true
 EOF
 
