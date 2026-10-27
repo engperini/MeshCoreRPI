@@ -128,6 +128,18 @@ RPI_RADIO_DRIVER=sx1262_ch341   # alias: meshstick
 Expected in `radio-diag`: `"driver":"sx1262_ch341"` and a `status` other than 0 or 255
 (in RX mode it is typically 0x5X, i.e. 80..95).
 
+### Companion periodic advert (minutes)
+
+The companion app's periodic advert setting is in hours. For range tests the native
+companion can advertise itself on its own schedule:
+
+```dotenv
+RPI_ADVERT_INTERVAL_MIN=15    # 0 (default) = off
+RPI_ADVERT_MODE=flood         # or zerohop (direct neighbours only, less airtime)
+```
+
+Each advert costs airtime on a shared channel; turn it back off (or raise it) after testing.
+
 ### SX127x quick-start profile
 
 If you use an SX127x-based module, set the driver explicitly and adjust GPIO pins to your wiring:

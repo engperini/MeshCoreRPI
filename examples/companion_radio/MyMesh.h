@@ -163,6 +163,7 @@ protected:
 
 public:
   void savePrefs() { _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon); }
+  bool sendSelfAdvert(bool flood);
 
 private:
   void writeOKFrame();

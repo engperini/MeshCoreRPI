@@ -162,6 +162,10 @@ int main(int argc, char** argv) {
     hasEnv("RPI_FREQ_HZ") || hasEnv("RPI_SF") || hasEnv("RPI_BW_HZ") || hasEnv("RPI_CR") || hasEnv("RPI_TX_DBM");
 
   int tcp_port = envInt("RPI_COMPANION_TCP_PORT", 5000);
+  // Optional periodic self-advert from the native companion (minutes, 0 = off),
+  // e.g. for range tests; finer-grained than the companion app's hourly setting.
+  int advert_interval_min = envInt("RPI_ADVERT_INTERVAL_MIN", 0);
+  bool advert_flood = envString("RPI_ADVERT_MODE", "flood") != "zerohop";
   float freq_mhz = static_cast<float>(envInt("RPI_FREQ_HZ", 869525000)) / 1000000.0f;
   float bw_khz = static_cast<float>(envInt("RPI_BW_HZ", 250000)) / 1000.0f;
   uint8_t sf = static_cast<uint8_t>(envInt("RPI_SF", 11));
@@ -270,7 +274,19 @@ int main(int argc, char** argv) {
     LinuxTcpSerialInterface serial_interface(tcp_port);
     the_mesh.startInterface(serial_interface);
 
+    if (advert_interval_min > 0) {
+      std::cout << "auto-advert: every " << advert_interval_min << " min ("
+                << (advert_flood ? "flood" : "zerohop") << ")\n";
+    }
+    auto next_advert = std::chrono::steady_clock::now() + std::chrono::minutes(advert_interval_min);
+
     while (!g_stop.load()) {
+      if (advert_interval_min > 0 && std::chrono::steady_clock::now() >= next_advert) {
+        next_advert += std::chrono::minutes(advert_interval_min);
+        if (!the_mesh.sendSelfAdvert(advert_flood)) {
+          std::cerr << "auto-advert: packet pool full, skipped\n";
+        }
+      }
       the_mesh.loop();
       sensors.loop();
       rtc_clock.tick();
