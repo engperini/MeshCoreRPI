@@ -922,6 +922,17 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
+void MyMesh::setRadioPrefs(float freq, float bw, uint8_t sf, uint8_t cr, int8_t tx_power_dbm) {
+  _prefs.freq = freq;
+  _prefs.bw = bw;
+  _prefs.sf = sf;
+  _prefs.cr = cr;
+  _prefs.tx_power_dbm = tx_power_dbm;
+  savePrefs();
+  radio_set_params(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+  radio_set_tx_power(_prefs.tx_power_dbm);
+}
+
 bool MyMesh::sendSelfAdvert(bool flood) {
   mesh::Packet* pkt;
   if (_prefs.advert_loc_policy == ADVERT_LOC_NONE) {

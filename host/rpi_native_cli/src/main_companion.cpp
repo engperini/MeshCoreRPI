@@ -263,10 +263,10 @@ int main(int argc, char** argv) {
     the_mesh.clearStats();  // Zero statistics on startup
 
     // begin() loads persisted prefs and may reset radio params; re-apply
-    // explicit runtime CLI radio overrides after begin().
+    // explicit runtime CLI/env radio overrides after begin(), and store them
+    // in prefs so companion apps show the params the radio actually uses.
     if (runtime_radio_override) {
-      radio_set_params(freq_mhz, bw_khz, sf, cr);
-      radio_set_tx_power(tx_dbm);
+      the_mesh.setRadioPrefs(freq_mhz, bw_khz, sf, cr, tx_dbm);
     }
 
     printStartupRadioInfo(tcp_port);
