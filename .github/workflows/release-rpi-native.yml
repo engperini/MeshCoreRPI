@@ -1,15 +1,19 @@
 name: Release Raspberry Pi packages
 
 # Builds the native repeater/companion .deb packages for 64-bit Raspberry Pi OS
-# and attaches them to a GitHub release.
+# and attaches them to a GitHub release, creating the release if needed
+# (notes from docs/release-notes/<tag>.md).
 # Built inside Debian bookworm so the binaries also run on older Pi OS releases.
+#
+# To release: Actions -> "Release Raspberry Pi packages" -> Run workflow,
+# enter a new tag (e.g. v0.2.0); it is created on the selected branch.
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to build and upload packages for (e.g. v0.2.0)"
+        description: "Release tag (e.g. v0.2.0); created on the selected branch if it does not exist"
         required: true
 
 permissions:
@@ -35,7 +39,8 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          # an existing release builds its tag; a manual run builds the selected branch
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
       - name: Build packages
         run: |
@@ -47,6 +52,17 @@ jobs:
           /opt/pio/bin/pio run -e RaspberryPiMC_native_companion
           /opt/pio/bin/pio run -e RaspberryPiMC_native_repeater
           ls -l RaspberryPiMC/dist/*.deb
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            notes="docs/release-notes/${TAG}.md"
+            [ -f "$notes" ] || notes=/dev/null
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" \
+              --title "$TAG" --notes-file "$notes" --latest
+          fi
 
       - name: Upload to release
         env:
