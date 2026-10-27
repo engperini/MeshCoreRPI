@@ -28,6 +28,7 @@ a Debian package, a systemd service and one config file.
 - 📡 **LoRa HATs:** SX1262 (e.g. Waveshare) and SX127x modules on the SPI header.
 - 💬 **Companion:** MeshCore companion protocol over TCP (port 5000) plus an optional BLE bridge.
 - 🔁 **Repeater:** full MeshCore repeater with CLI over TCP.
+- 📟 **Message terminal (no phone):** RemoteTerm on the Pi, optionally full-screen on its own display.
 - 🖥️ **Web dashboard:** built-in companion/repeater web UI (ports 8080/8081).
 - ⚙️ **Easy to run:** one-line installer, `.deb` packages, systemd services, config in `/etc/raspberrypimc/*.env`
   that is never overwritten on upgrade.
@@ -44,6 +45,17 @@ a Debian package, a systemd service and one config file.
 
 Raspberry Pi with **64-bit Raspberry Pi OS** (Bookworm or newer). One radio runs one role: Companion **or**
 Repeater (two roles on one HAT is possible with [spi-bridge](https://github.com/dabeani/RPI_spi-bridge)).
+
+## Choose your mode
+
+| I want… | Install |
+|---|---|
+| 🔁 A **repeater** | `curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/install.sh \| sudo bash -s -- repeater` |
+| 💬 A **companion** for apps on my LAN | `curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/install.sh \| sudo bash` |
+| 📟 A **message terminal**, no phone | the companion above, then [the terminal setup](#message-terminal-no-phone-needed) |
+
+One radio runs one role. The plan for the standalone terminal (display, touch, bots, hardening)
+is in [docs/STANDALONE_TERMINAL.md](docs/STANDALONE_TERMINAL.md).
 
 ## Quick start (USB MeshStick)
 
@@ -75,12 +87,26 @@ Repeater (two roles on one HAT is possible with [spi-bridge](https://github.com/
 Using a HAT? Install the same way, then set `RPI_RADIO_DRIVER` and the pins in
 `/etc/raspberrypimc/companion.env` (see [Advanced reference](#advanced-reference)).
 
+## Message terminal (no phone needed)
+
+Turn the Pi into a self-contained MeshCore messenger: [RemoteTerm](https://github.com/jkingsman/Remote-Terminal-for-MeshCore)
+(messages, channels, contacts, history, mesh map) runs on the Pi and talks straight to the companion.
+
+```bash
+# after installing the companion:
+curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/RaspberryPiMC/terminal/setup-terminal.sh | sudo bash
+```
+
+Open `http://<pi-ip>:8080` from any browser on your LAN. With a display on the Pi (Raspberry Pi OS
+with Desktop), add `-s -- --kiosk` to open it full-screen at every boot; `--no-kiosk` turns that off.
+The script installs Docker if needed and keeps RemoteTerm's data in `/opt/meshcorerpi-terminal/data`.
+
 ## Connect a client
 
 | Client | How |
 |---|---|
 | Built-in web dashboard | `http://<pi-ip>:8080` (companion) / `:8081` (repeater) |
-| [RemoteTerm](https://github.com/jkingsman/Remote-Terminal-for-MeshCore) | TCP connection to `<pi-ip>:5000` |
+| [RemoteTerm](https://github.com/jkingsman/Remote-Terminal-for-MeshCore) | on the Pi: [message terminal](#message-terminal-no-phone-needed); elsewhere: TCP to `<pi-ip>:5000` |
 | [meshcore-cli](https://pypi.org/project/meshcore-cli/) | `meshcore-cli -t <pi-ip> -p 5000` |
 | MeshCore phone app over BLE | enable the BLE bridge: `RPI_COMPANION_BLE_ENABLE=1` (experimental) |
 
@@ -147,6 +173,9 @@ Each build also produces the `.deb` in `RaspberryPiMC/dist/`.
 3. Abra `http://<ip-do-pi>:8080`, ou conecte o RemoteTerm em `<ip-do-pi>:5000`.
 4. Configure a rede MeshCore Brasil: **923.125 MHz, BW 62.5 kHz, SF 8, CR 8**, path hash 2 bytes.
 5. Mande um advert (flood) e teste com outro nó.
+6. Quer usar o Pi como terminal de mensagens, sem celular? Rode o
+   `RaspberryPiMC/terminal/setup-terminal.sh` (com `--kiosk` para abrir em tela cheia no display do Pi).
+   Para repetidor: `... install.sh | sudo bash -s -- repeater`.
 
 ## Credits
 
