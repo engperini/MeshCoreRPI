@@ -41,7 +41,7 @@ if [[ ! -f "$BIN_PATH" ]]; then
 fi
 
 ARCH="$(dpkg --print-architecture)"
-VERSION_BASE="0.1.0"
+VERSION_BASE="${RPI_PKG_VERSION:-0.1.0}"
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo nosha)"
 PKG_VERSION="${VERSION_BASE}+${GIT_SHA}"
 PKG_NAME="raspberrypimc-native-${ROLE}"
