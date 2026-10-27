@@ -121,6 +121,7 @@ Radio driver can be selected per runtime:
 ```dotenv
 RPI_RADIO_DRIVER=sx1262   # Waveshare SX1262 HAT
 # RPI_RADIO_DRIVER=sx127x # SX127x-based modules
+# RPI_RADIO_DRIVER=sx1262_ch341 # USB MeshStick (CH341 1a86:5512); pins default to D0/D2/D4/D6
 ```
 
 If `RPI_RADIO_DRIVER` is not set, default is `sx1262`.
@@ -268,7 +269,7 @@ RPI_SF=8
 RPI_BW_HZ=62500
 RPI_CR=8
 RPI_TX_DBM=22
-RPI_RADIO_DRIVER=sx1262              # set sx127x for SX127x hardware
+RPI_RADIO_DRIVER=sx1262              # set sx127x for SX127x hardware, sx1262_ch341 for USB MeshStick
 RPI_SPI_DEV_PREFIX=/dev/spidev   # override to /dev/spi-bridge when needed
 RPI_SPI_BUS=0
 RPI_SPI_CS=0

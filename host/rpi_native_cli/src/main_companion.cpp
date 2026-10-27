@@ -180,6 +180,8 @@ int main(int argc, char** argv) {
   int rxen_pin = envInt("RPI_RXEN_PIN", -1);
   bool use_dio3_tcxo = envEnabled("RPI_USE_TCXO", false);
   bool use_dio2_rf_switch = envEnabled("RPI_USE_DIO2_RF", false);
+  bool tcxo_flag = false;
+  bool dio2_flag = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a(argv[i]);
@@ -214,17 +216,24 @@ int main(int argc, char** argv) {
     else if (a == "--irq-pin" && i + 1 < argc) irq_pin = std::stoi(argv[++i]);
     else if (a == "--txen-pin" && i + 1 < argc) txen_pin = std::stoi(argv[++i]);
     else if (a == "--rxen-pin" && i + 1 < argc) rxen_pin = std::stoi(argv[++i]);
-    else if (a == "--no-tcxo") use_dio3_tcxo = false;
-    else if (a == "--no-dio2-rf") use_dio2_rf_switch = false;
+    else if (a == "--no-tcxo") { use_dio3_tcxo = false; tcxo_flag = true; }
+    else if (a == "--no-dio2-rf") { use_dio2_rf_switch = false; dio2_flag = true; }
     else if (a == "--tcp-port" && i + 1 < argc) tcp_port = std::stoi(argv[++i]);
     else if (a == "--help") {
       std::cout << "Usage: meshcore-rpi-native-companion [--freq HZ] [--sf N] [--bw HZ] [--cr N] [--tx DBM] [--tcp-port N]"
-                   " [--radio-driver sx1262|sx127x]"
+                   " [--radio-driver sx1262|sx1262_ch341|sx127x]"
                    " [--spi-dev-prefix PATH] [--spi-bus N] [--spi-cs N] [--spi-speed HZ]"
                    " [--cs-pin N] [--reset-pin N] [--busy-pin N] [--irq-pin N] [--txen-pin N] [--rxen-pin N]"
                    " [--no-tcxo] [--no-dio2-rf]\n";
       return 0;
     }
+  }
+
+  // USB MeshStick (CH341 + SX1262): its SX1262 needs the DIO3-powered TCXO,
+  // and DIO2 drives the RF switch. Default both on unless set explicitly.
+  if (radio_driver_is_ch341(radio_driver_name.c_str())) {
+    if (!tcxo_flag && !hasEnv("RPI_USE_TCXO")) use_dio3_tcxo = true;
+    if (!dio2_flag && !hasEnv("RPI_USE_DIO2_RF")) use_dio2_rf_switch = true;
   }
 
   radio_set_driver(radio_driver_name.c_str());

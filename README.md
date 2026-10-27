@@ -35,7 +35,7 @@ RPI_CR=8
 RPI_TX_DBM=22
 
 # Radio backend selector
-RPI_RADIO_DRIVER=sx1262   # or: sx127x
+RPI_RADIO_DRIVER=sx1262   # or: sx127x, sx1262_ch341 (USB MeshStick)
 
 # SPI device node prefix (default: /dev/spidev)
 RPI_SPI_DEV_PREFIX=/dev/spidev
@@ -106,6 +106,27 @@ For RaspberryPiMC native targets, set them in `platformio.ini` under:
 
 - `[env:RaspberryPiMC_native_repeater]`
 - `[env:RaspberryPiMC_native_companion]`
+
+### USB MeshStick (CH341 + SX1262) profile
+
+USB LoRa dongles built on a CH341A bridge (`lsusb` shows `1a86:5512`), such as the
+Elecrow MeshStick, are driven over USB with libusb instead of the Pi GPIO/SPI header:
+
+```dotenv
+RPI_RADIO_DRIVER=sx1262_ch341   # alias: meshstick
+```
+
+- Pins are CH341 D-lines. MeshStick defaults are applied automatically: CS=D0, RESET=D2,
+  BUSY=D4, IRQ=D6. Leftover BCM pin numbers in the env file are ignored.
+- `RPI_USE_TCXO` and `RPI_USE_DIO2_RF` default to `1` for this driver.
+- `RPI_SPI_*` settings are not used.
+- Needs `libusb-1.0-0` (`sudo apt-get install -y libusb-1.0-0`), root (the services already run as root),
+  and no other program (e.g. `meshtasticd`) holding the dongle.
+- Startup fails with `SX1262 not responding (GetStatus=0x..)` if the radio does not answer,
+  instead of running with fake radio statistics.
+
+Expected in `radio-diag`: `"driver":"sx1262_ch341"` and a `status` other than 0 or 255
+(in RX mode it is typically 0x5X, i.e. 80..95).
 
 ### SX127x quick-start profile
 
