@@ -12,7 +12,7 @@ public:
   explicit SX127xLinuxRadio(const Config& cfg);
   ~SX127xLinuxRadio();
 
-  void setConfig(const Config& cfg_) override { cfg = cfg_; }
+  void setConfig(const Config& cfg_) override;
   const Config& getConfig() const override { return cfg; }
   const char* getDriverName() const override { return "sx127x"; }
 
@@ -39,9 +39,12 @@ public:
   uint16_t debugGetDeviceErrors() override;
 
 private:
+  void applyRfConfig();
   Config cfg;
   int spi_fd = -1;
   bool tx_pending = false;
+  bool started = false;
+  bool rf_apply_pending = false;
   bool rx_mode = false;
   float last_rssi = -120.0f;
   float last_snr = 0.0f;

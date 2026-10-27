@@ -555,6 +555,31 @@ void SX1262LinuxRadio::begin() {
   noise_threshold = DEFAULT_SAMPLING_THRESHOLD;
   floor_samples = 0;
   floor_sample_sum = 0;
+  started = true;
+}
+
+void SX1262LinuxRadio::setConfig(const Config& cfg_) {
+  cfg = cfg_;
+  if (!started) return;
+  // Radio params (e.g. from saved prefs or the companion app) can change after
+  // begin(); push them to the chip, but never in the middle of a TX.
+  if (tx_pending) {
+    rf_apply_pending = true;
+    return;
+  }
+  applyRfConfig();
+}
+
+void SX1262LinuxRadio::applyRfConfig() {
+  rf_apply_pending = false;
+  sxSetStandby();
+  sxSetRfFrequency(cfg.frequency_hz);
+  sxSetTxParams(cfg.tx_power_dbm);
+  sxSetModulation();
+  sxSetPacketParams(0);
+  sxSetSyncWord(cfg.sync_word);
+  sxClearIrq();
+  sxSetRxContinuous();
 }
 
 void SX1262LinuxRadio::verifyChip() {
@@ -666,6 +691,10 @@ bool SX1262LinuxRadio::isSendComplete() {
 void SX1262LinuxRadio::onSendFinished() {
   if (cfg.txen_pin >= 0) gpioWrite(cfg.txen_pin, 0);
   if (cfg.rxen_pin >= 0) gpioWrite(cfg.rxen_pin, 1);
+  if (rf_apply_pending) {
+    applyRfConfig();
+    return;
+  }
   sxSetRxContinuous();
 }
 

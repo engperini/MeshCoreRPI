@@ -350,9 +350,35 @@ void SX127xLinuxRadio::begin() {
 
   setMode(MODE_RX_CONT);
   rx_mode = true;
+  started = true;
 #else
   throw std::runtime_error("SX127xLinuxRadio requires Linux runtime");
 #endif
+}
+
+void SX127xLinuxRadio::setConfig(const Config& cfg_) {
+  cfg = cfg_;
+  if (!started) return;
+  // Push params changed after begin() to the chip, but never mid-TX.
+  if (tx_pending) {
+    rf_apply_pending = true;
+    return;
+  }
+  applyRfConfig();
+}
+
+void SX127xLinuxRadio::applyRfConfig() {
+  rf_apply_pending = false;
+  setMode(MODE_STDBY);
+  setFrequency(cfg.frequency_hz);
+  setTxPower(static_cast<int8_t>(cfg.tx_power_dbm));
+  setBandwidthAndCodingRate(cfg.bandwidth_hz, cfg.coding_rate);
+  setSpreadingFactor(cfg.spreading_factor);
+  setPreamble(cfg.preamble_len);
+  setSyncWord(static_cast<uint8_t>(cfg.sync_word & 0xFF));
+  writeReg(REG_IRQ_FLAGS, 0xFF);
+  setMode(MODE_RX_CONT);
+  rx_mode = true;
 }
 
 int SX127xLinuxRadio::recvRaw(uint8_t* bytes, int sz) {
@@ -437,6 +463,10 @@ bool SX127xLinuxRadio::isSendComplete() {
 
   if (cfg.txen_pin >= 0) gpioWrite(cfg.txen_pin, 0);
   if (cfg.rxen_pin >= 0) gpioWrite(cfg.rxen_pin, 1);
+  if (rf_apply_pending) {
+    applyRfConfig();
+    return true;
+  }
   setMode(MODE_RX_CONT);
   rx_mode = true;
   return true;

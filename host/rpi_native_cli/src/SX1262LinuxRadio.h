@@ -13,7 +13,7 @@ public:
   explicit SX1262LinuxRadio(const Config& cfg, bool use_ch341 = false);
   ~SX1262LinuxRadio();
 
-  void setConfig(const Config& cfg_) override { cfg = cfg_; }
+  void setConfig(const Config& cfg_) override;
   const Config& getConfig() const override { return cfg; }
   const char* getDriverName() const override { return use_ch341 ? "sx1262_ch341" : "sx1262"; }
 
@@ -46,6 +46,8 @@ private:
   Ch341Bridge ch341;
   int spi_fd = -1;
   bool tx_pending = false;
+  bool started = false;
+  bool rf_apply_pending = false;
   bool rx_mode = false;
   float last_rssi = -120.0f;
   float last_snr = 0.0f;
@@ -67,6 +69,7 @@ private:
   void gpioPulseReset();
 
   void verifyChip();
+  void applyRfConfig();
   void waitBusyLow();
   void spiCommand(uint8_t cmd, const uint8_t* payload, int payload_len);
   void spiReadCommand(uint8_t cmd, uint8_t* out, int out_len);
