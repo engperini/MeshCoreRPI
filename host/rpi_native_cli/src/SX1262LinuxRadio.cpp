@@ -202,7 +202,8 @@ void SX1262LinuxRadio::waitBusyLow() {
     if (gpioRead(cfg.busy_pin) == 0) return;
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  throw std::runtime_error("SX1262 BUSY did not go low (check pin map and radio power)");
+  if (usb_transport)
+    throw std::runtime_error("SX1262 BUSY did not go low (check pin map and radio power)");
 }
 
 void SX1262LinuxRadio::spiCommand(uint8_t cmd, const uint8_t* payload, int payload_len) {
