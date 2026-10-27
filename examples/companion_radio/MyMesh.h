@@ -163,6 +163,8 @@ protected:
 
 public:
   void savePrefs() { _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon); }
+  bool sendSelfAdvert(bool flood);
+  void setRadioPrefs(float freq, float bw, uint8_t sf, uint8_t cr, int8_t tx_power_dbm);
 
 private:
   void writeOKFrame();

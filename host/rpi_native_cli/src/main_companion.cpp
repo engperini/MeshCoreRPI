@@ -154,12 +154,18 @@ bool envEnabled(const char* name, bool fallback) {
 }
 
 int main(int argc, char** argv) {
+  // Line-buffer stdout so startup info and packet logs reach journald live.
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);
   preloadRoleConfigEnv();
 
   const bool env_radio_override =
     hasEnv("RPI_FREQ_HZ") || hasEnv("RPI_SF") || hasEnv("RPI_BW_HZ") || hasEnv("RPI_CR") || hasEnv("RPI_TX_DBM");
 
   int tcp_port = envInt("RPI_COMPANION_TCP_PORT", 5000);
+  // Optional periodic self-advert from the native companion (minutes, 0 = off),
+  // e.g. for range tests; finer-grained than the companion app's hourly setting.
+  int advert_interval_min = envInt("RPI_ADVERT_INTERVAL_MIN", 0);
+  bool advert_flood = envString("RPI_ADVERT_MODE", "flood") != "zerohop";
   float freq_mhz = static_cast<float>(envInt("RPI_FREQ_HZ", 869525000)) / 1000000.0f;
   float bw_khz = static_cast<float>(envInt("RPI_BW_HZ", 250000)) / 1000.0f;
   uint8_t sf = static_cast<uint8_t>(envInt("RPI_SF", 11));
@@ -180,6 +186,8 @@ int main(int argc, char** argv) {
   int rxen_pin = envInt("RPI_RXEN_PIN", -1);
   bool use_dio3_tcxo = envEnabled("RPI_USE_TCXO", false);
   bool use_dio2_rf_switch = envEnabled("RPI_USE_DIO2_RF", false);
+  bool tcxo_flag = false;
+  bool dio2_flag = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a(argv[i]);
@@ -214,17 +222,24 @@ int main(int argc, char** argv) {
     else if (a == "--irq-pin" && i + 1 < argc) irq_pin = std::stoi(argv[++i]);
     else if (a == "--txen-pin" && i + 1 < argc) txen_pin = std::stoi(argv[++i]);
     else if (a == "--rxen-pin" && i + 1 < argc) rxen_pin = std::stoi(argv[++i]);
-    else if (a == "--no-tcxo") use_dio3_tcxo = false;
-    else if (a == "--no-dio2-rf") use_dio2_rf_switch = false;
+    else if (a == "--no-tcxo") { use_dio3_tcxo = false; tcxo_flag = true; }
+    else if (a == "--no-dio2-rf") { use_dio2_rf_switch = false; dio2_flag = true; }
     else if (a == "--tcp-port" && i + 1 < argc) tcp_port = std::stoi(argv[++i]);
     else if (a == "--help") {
       std::cout << "Usage: meshcore-rpi-native-companion [--freq HZ] [--sf N] [--bw HZ] [--cr N] [--tx DBM] [--tcp-port N]"
-                   " [--radio-driver sx1262|sx127x]"
+                   " [--radio-driver sx1262|sx1262_ch341|sx127x]"
                    " [--spi-dev-prefix PATH] [--spi-bus N] [--spi-cs N] [--spi-speed HZ]"
                    " [--cs-pin N] [--reset-pin N] [--busy-pin N] [--irq-pin N] [--txen-pin N] [--rxen-pin N]"
                    " [--no-tcxo] [--no-dio2-rf]\n";
       return 0;
     }
+  }
+
+  // USB MeshStick (CH341 + SX1262): its SX1262 needs the DIO3-powered TCXO,
+  // and DIO2 drives the RF switch. Default both on unless set explicitly.
+  if (radio_driver_is_ch341(radio_driver_name.c_str())) {
+    if (!tcxo_flag && !hasEnv("RPI_USE_TCXO")) use_dio3_tcxo = true;
+    if (!dio2_flag && !hasEnv("RPI_USE_DIO2_RF")) use_dio2_rf_switch = true;
   }
 
   radio_set_driver(radio_driver_name.c_str());
@@ -248,10 +263,10 @@ int main(int argc, char** argv) {
     the_mesh.clearStats();  // Zero statistics on startup
 
     // begin() loads persisted prefs and may reset radio params; re-apply
-    // explicit runtime CLI radio overrides after begin().
+    // explicit runtime CLI/env radio overrides after begin(), and store them
+    // in prefs so companion apps show the params the radio actually uses.
     if (runtime_radio_override) {
-      radio_set_params(freq_mhz, bw_khz, sf, cr);
-      radio_set_tx_power(tx_dbm);
+      the_mesh.setRadioPrefs(freq_mhz, bw_khz, sf, cr, tx_dbm);
     }
 
     printStartupRadioInfo(tcp_port);
@@ -259,7 +274,19 @@ int main(int argc, char** argv) {
     LinuxTcpSerialInterface serial_interface(tcp_port);
     the_mesh.startInterface(serial_interface);
 
+    if (advert_interval_min > 0) {
+      std::cout << "auto-advert: every " << advert_interval_min << " min ("
+                << (advert_flood ? "flood" : "zerohop") << ")\n";
+    }
+    auto next_advert = std::chrono::steady_clock::now() + std::chrono::minutes(advert_interval_min);
+
     while (!g_stop.load()) {
+      if (advert_interval_min > 0 && std::chrono::steady_clock::now() >= next_advert) {
+        next_advert += std::chrono::minutes(advert_interval_min);
+        if (!the_mesh.sendSelfAdvert(advert_flood)) {
+          std::cerr << "auto-advert: packet pool full, skipped\n";
+        }
+      }
       the_mesh.loop();
       sensors.loop();
       rtc_clock.tick();

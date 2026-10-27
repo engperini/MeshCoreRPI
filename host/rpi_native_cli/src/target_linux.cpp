@@ -144,6 +144,8 @@ void LinuxRadioDriver::ensureBackend() {
 
   if (driver_name == "sx127x") {
     backend = std::make_unique<SX127xLinuxRadio>(cfg);
+  } else if (driver_name == "sx1262_ch341") {
+    backend = std::make_unique<SX1262LinuxRadio>(cfg, true);
   } else {
     driver_name = "sx1262";
     backend = std::make_unique<SX1262LinuxRadio>(cfg);
@@ -153,6 +155,8 @@ void LinuxRadioDriver::ensureBackend() {
 void LinuxRadioDriver::setDriverName(const std::string& name) {
   if (name == "sx127x") {
     driver_name = "sx127x";
+  } else if (radio_driver_is_ch341(name.c_str())) {
+    driver_name = "sx1262_ch341";
   } else {
     driver_name = "sx1262";
   }
@@ -325,9 +329,17 @@ uint32_t radio_get_rng_seed() {
   return rng();
 }
 
+bool radio_driver_is_ch341(const char* driver_name) {
+  if (!driver_name) return false;
+  const std::string name(driver_name);
+  return name == "sx1262_ch341" || name == "meshstick";
+}
+
 void radio_set_driver(const char* driver_name) {
   if (driver_name && std::string(driver_name) == "sx127x") {
     g_driver_name = "sx127x";
+  } else if (radio_driver_is_ch341(driver_name)) {
+    g_driver_name = "sx1262_ch341";
   } else {
     g_driver_name = "sx1262";
   }
@@ -368,6 +380,21 @@ void radio_set_hw_config(const char* spi_dev_prefix, int spi_bus, int spi_cs, in
   g_cfg.rxen_pin = rxen_pin;
   g_cfg.use_dio3_tcxo = use_dio3_tcxo;
   g_cfg.use_dio2_rf_switch = use_dio2_rf_switch;
+
+  if (g_driver_name == "sx1262_ch341") {
+    // Pins are CH341 D0..D7 lines here. Values left over from a GPIO-header
+    // config (e.g. BCM 21/18/20/16) fall back to the MeshStick wiring.
+    // D3 (SCK), D5 (MOSI) and D7 (MISO) belong to the SPI engine.
+    auto usable = [](int pin, bool output) {
+      return pin >= 0 && pin <= (output ? 4 : 6) && pin != 3 && pin != 5;
+    };
+    if (!usable(g_cfg.cs_pin, true)) g_cfg.cs_pin = 0;
+    if (!usable(g_cfg.reset_pin, true)) g_cfg.reset_pin = 2;
+    if (!usable(g_cfg.busy_pin, false)) g_cfg.busy_pin = 4;
+    if (!usable(g_cfg.irq_pin, false)) g_cfg.irq_pin = 6;
+    if (g_cfg.txen_pin >= 0 && !usable(g_cfg.txen_pin, true)) g_cfg.txen_pin = -1;
+    if (g_cfg.rxen_pin >= 0 && !usable(g_cfg.rxen_pin, true)) g_cfg.rxen_pin = -1;
+  }
   radio_driver.setConfig(g_cfg);
 }
 

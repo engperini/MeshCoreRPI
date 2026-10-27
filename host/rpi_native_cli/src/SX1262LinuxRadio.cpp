@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -30,7 +31,7 @@ std::string gpioPath(int pin, const std::string& node) {
 }
 }
 
-SX1262LinuxRadio::SX1262LinuxRadio(const Config& cfg_) : cfg(cfg_) {}
+SX1262LinuxRadio::SX1262LinuxRadio(const Config& cfg_, bool use_ch341_) : cfg(cfg_), use_ch341(use_ch341_) {}
 
 SX1262LinuxRadio::~SX1262LinuxRadio() {
 #ifdef __linux__
@@ -85,6 +86,10 @@ std::string SX1262LinuxRadio::gpioNodePath(int pin, const std::string& node) {
 }
 
 void SX1262LinuxRadio::openSpi() {
+  if (use_ch341) {
+    ch341.open();
+    return;
+  }
 #ifdef __linux__
   const std::string dev = cfg.spi_dev_prefix + std::to_string(cfg.spi_bus) + "." + std::to_string(cfg.spi_cs);
   spi_fd = open(dev.c_str(), O_RDWR);
@@ -111,6 +116,18 @@ void SX1262LinuxRadio::openSpi() {
 void SX1262LinuxRadio::spiTransfer(const uint8_t* tx, uint8_t* rx, size_t len) {
 #ifdef __linux__
   if (len == 0) return;
+  if (use_ch341) {
+    // SX126x NSS is active low; the CH341 SPI stream does not drive it.
+    ch341.digitalWrite(cfg.cs_pin, false);
+    try {
+      ch341.spiTransfer(tx, rx, len);
+    } catch (...) {
+      ch341.digitalWrite(cfg.cs_pin, true);
+      throw;
+    }
+    ch341.digitalWrite(cfg.cs_pin, true);
+    return;
+  }
   if (spi_fd < 0) throw std::runtime_error("SPI not opened");
 
   if (cfg.cs_pin >= 0) gpioWrite(cfg.cs_pin, 0);
@@ -131,7 +148,7 @@ void SX1262LinuxRadio::spiTransfer(const uint8_t* tx, uint8_t* rx, size_t len) {
 }
 
 void SX1262LinuxRadio::gpioExport(int pin) {
-  if (pin < 0) return;
+  if (pin < 0 || use_ch341) return;
 
   const int sysfs_pin = toSysfsPin(pin);
   std::ofstream ex("/sys/class/gpio/export");
@@ -146,6 +163,10 @@ void SX1262LinuxRadio::gpioExport(int pin) {
 
 void SX1262LinuxRadio::gpioDirection(int pin, const char* mode) {
   if (pin < 0) return;
+  if (use_ch341) {
+    ch341.pinMode(pin, std::strcmp(mode, "out") == 0);
+    return;
+  }
 
   std::ofstream dir(gpioNodePath(pin, "direction"));
   dir << mode;
@@ -153,6 +174,10 @@ void SX1262LinuxRadio::gpioDirection(int pin, const char* mode) {
 
 void SX1262LinuxRadio::gpioWrite(int pin, int value) {
   if (pin < 0) return;
+  if (use_ch341) {
+    ch341.digitalWrite(pin, value != 0);
+    return;
+  }
 
   std::ofstream v(gpioNodePath(pin, "value"));
   v << (value ? "1" : "0");
@@ -160,6 +185,7 @@ void SX1262LinuxRadio::gpioWrite(int pin, int value) {
 
 int SX1262LinuxRadio::gpioRead(int pin) {
   if (pin < 0) return 0;
+  if (use_ch341) return ch341.digitalRead(pin) ? 1 : 0;
 
   std::ifstream v(gpioNodePath(pin, "value"));
   int out = 0;
@@ -477,6 +503,9 @@ void SX1262LinuxRadio::begin() {
   throw std::runtime_error("RaspberryPiMC_native runtime is Linux-only");
 #endif
 
+  // The CH341 carries both SPI and the control pins, so it must be open first.
+  if (use_ch341) openSpi();
+
   // GPIO setup (sysfs) for SX1262 control pins.
   gpioExport(cfg.cs_pin);
   gpioExport(cfg.reset_pin);
@@ -495,10 +524,11 @@ void SX1262LinuxRadio::begin() {
   // Inactive high for manual CS.
   if (cfg.cs_pin >= 0) gpioWrite(cfg.cs_pin, 1);
 
-  openSpi();
+  if (!use_ch341) openSpi();
   gpioPulseReset();
 
   sxSetStandby();
+  verifyChip();
 
   if (cfg.use_dio3_tcxo) {
     sxSetDio3AsTcxoCtrl(cfg.tcxo_voltage, cfg.tcxo_delay_us);
@@ -525,6 +555,47 @@ void SX1262LinuxRadio::begin() {
   noise_threshold = DEFAULT_SAMPLING_THRESHOLD;
   floor_samples = 0;
   floor_sample_sum = 0;
+  started = true;
+}
+
+void SX1262LinuxRadio::setConfig(const Config& cfg_) {
+  cfg = cfg_;
+  if (!started) return;
+  // Radio params (e.g. from saved prefs or the companion app) can change after
+  // begin(); push them to the chip, but never in the middle of a TX.
+  if (tx_pending) {
+    rf_apply_pending = true;
+    return;
+  }
+  applyRfConfig();
+}
+
+void SX1262LinuxRadio::applyRfConfig() {
+  rf_apply_pending = false;
+  sxSetStandby();
+  sxSetRfFrequency(cfg.frequency_hz);
+  sxSetTxParams(cfg.tx_power_dbm);
+  sxSetModulation();
+  sxSetPacketParams(0);
+  sxSetSyncWord(cfg.sync_word);
+  sxClearIrq();
+  sxSetRxContinuous();
+}
+
+void SX1262LinuxRadio::verifyChip() {
+  // After SetStandby the chip mode field (bits 6:4) must read STBY_RC (2) or
+  // STBY_XOSC (3). 0x00/0xFF means nothing answered on the bus.
+  const uint8_t st = spiReadStatusByte(0xC0);
+  const int mode = (st >> 4) & 0x07;
+  if (mode == 2 || mode == 3) return;
+
+  char hex[8];
+  std::snprintf(hex, sizeof(hex), "0x%02X", st);
+  const std::string msg = std::string("SX1262 not responding (GetStatus=") + hex + ")";
+  if (use_ch341) {
+    throw std::runtime_error(msg + " via CH341; check the dongle, antenna and RPI_CS/RESET/BUSY pins (MeshStick: 0/2/4)");
+  }
+  std::fprintf(stderr, "warning: %s; check SPI device and pins\n", msg.c_str());
 }
 
 uint8_t SX1262LinuxRadio::debugGetStatus() {
@@ -620,6 +691,10 @@ bool SX1262LinuxRadio::isSendComplete() {
 void SX1262LinuxRadio::onSendFinished() {
   if (cfg.txen_pin >= 0) gpioWrite(cfg.txen_pin, 0);
   if (cfg.rxen_pin >= 0) gpioWrite(cfg.rxen_pin, 1);
+  if (rf_apply_pending) {
+    applyRfConfig();
+    return;
+  }
   sxSetRxContinuous();
 }
 

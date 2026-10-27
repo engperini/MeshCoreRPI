@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ch341Bridge.h"
 #include "LinuxRadioBase.h"
 
 #include <cstdint>
@@ -9,12 +10,12 @@ class SX1262LinuxRadio : public LinuxRadioBase {
 public:
   using Config = LinuxRadioBase::Config;
 
-  explicit SX1262LinuxRadio(const Config& cfg);
+  explicit SX1262LinuxRadio(const Config& cfg, bool use_ch341 = false);
   ~SX1262LinuxRadio();
 
-  void setConfig(const Config& cfg_) override { cfg = cfg_; }
+  void setConfig(const Config& cfg_) override;
   const Config& getConfig() const override { return cfg; }
-  const char* getDriverName() const override { return "sx1262"; }
+  const char* getDriverName() const override { return use_ch341 ? "sx1262_ch341" : "sx1262"; }
 
   void begin() override;
   int recvRaw(uint8_t* bytes, int sz) override;
@@ -41,8 +42,12 @@ public:
 
 private:
   Config cfg;
+  bool use_ch341 = false;
+  Ch341Bridge ch341;
   int spi_fd = -1;
   bool tx_pending = false;
+  bool started = false;
+  bool rf_apply_pending = false;
   bool rx_mode = false;
   float last_rssi = -120.0f;
   float last_snr = 0.0f;
@@ -63,6 +68,8 @@ private:
   int gpioRead(int pin);
   void gpioPulseReset();
 
+  void verifyChip();
+  void applyRfConfig();
   void waitBusyLow();
   void spiCommand(uint8_t cmd, const uint8_t* payload, int payload_len);
   void spiReadCommand(uint8_t cmd, uint8_t* out, int out_len);

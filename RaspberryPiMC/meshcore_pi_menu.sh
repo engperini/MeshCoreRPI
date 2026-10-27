@@ -106,7 +106,7 @@ configure_values() {
   RPI_BW_HZ="$(prompt_value RPI_BW_HZ "$RPI_BW_HZ" "LoRa bandwidth (Hz)")"
   RPI_CR="$(prompt_value RPI_CR "$RPI_CR" "LoRa coding rate")"
   RPI_TX_DBM="$(prompt_value RPI_TX_DBM "$RPI_TX_DBM" "TX power (dBm)")"
-  RPI_RADIO_DRIVER="$(prompt_value RPI_RADIO_DRIVER "$RPI_RADIO_DRIVER" "Radio driver (sx1262|sx127x)")"
+  RPI_RADIO_DRIVER="$(prompt_value RPI_RADIO_DRIVER "$RPI_RADIO_DRIVER" "Radio driver (sx1262|sx1262_ch341|sx127x)")"
   RPI_DATA_DIR="$(prompt_value RPI_DATA_DIR "$RPI_DATA_DIR" "Data directory")"
   RPI_SPI_DEV_PREFIX="$(prompt_value RPI_SPI_DEV_PREFIX "$RPI_SPI_DEV_PREFIX" "SPI device prefix")"
   RPI_SPI_BUS="$(prompt_value RPI_SPI_BUS "$RPI_SPI_BUS" "SPI bus")"
