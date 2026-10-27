@@ -47,6 +47,12 @@ Repeater (two roles on one HAT is possible with [spi-bridge](https://github.com/
 
 ## Quick start (USB MeshStick)
 
+<p align="center">
+  <img src="docs/img/meshstick-on-pi.jpg" alt="Raspberry Pi 4 with a USB MeshStick on a short USB extension cable" width="380"><br>
+  <sub>The whole setup: a Raspberry Pi 4 and a USB MeshStick on a short extension cable.</sub>
+</p>
+
+
 1. **Attach the antenna first**, then plug the stick into the Pi.
 2. Install and start the companion:
 
