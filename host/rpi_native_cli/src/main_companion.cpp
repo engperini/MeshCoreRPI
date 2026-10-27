@@ -154,6 +154,8 @@ bool envEnabled(const char* name, bool fallback) {
 }
 
 int main(int argc, char** argv) {
+  // Line-buffer stdout so startup info and packet logs reach journald live.
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);
   preloadRoleConfigEnv();
 
   const bool env_radio_override =
