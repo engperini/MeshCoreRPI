@@ -882,7 +882,12 @@
 <h2 id="meshcorerpi-v023">MeshCoreRPI v0.2.3</h2>
 <h3 id="fixed">Fixed</h3>
 <ul>
-<li>Repeater: radio params set in <code>/etc/raspberrypimc/repeater.env</code> are now also stored in the repeater's prefs, so the web dashboard and <code>get radio</code> show the frequency the radio really uses (before, they showed the old 915 MHz default).</li>
+<li>
+<p>Repeater: radio params set in <code>/etc/raspberrypimc/repeater.env</code> are now also stored in the repeater's prefs, so the web dashboard and <code>get radio</code> show the frequency the radio really uses (before, they showed the old 915 MHz default).</p>
+</li>
+<li>
+<p>Clock: companion and repeater now follow the Pi's system time. Before, every start reset the clock to May 2024, so other nodes dropped the node's adverts as stale (e.g. a repeater using a key that had already advertised as a companion).</p>
+</li>
 </ul>
 <h3 id="since-v021">Since v0.2.1</h3>
 <ul>
