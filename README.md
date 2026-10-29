@@ -50,7 +50,7 @@ Repeater (two roles on one HAT is possible with [spi-bridge](https://github.com/
 
 | I want… | Install |
 |---|---|
-| 🔁 A **repeater** | `curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/install.sh \| sudo bash -s -- repeater` |
+| 🔁 A **repeater** | `curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/install.sh \| sudo bash -s -- repeater`, then [repeater setup](#repeater-setup) |
 | 💬 A **companion** for apps on my LAN | `curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/install.sh \| sudo bash` |
 | 📟 A **message terminal**, no phone | the companion above, then [the terminal setup](#message-terminal-no-phone-needed) |
 
@@ -100,6 +100,74 @@ curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/Raspberr
 Open `http://<pi-ip>:8080` from any browser on your LAN. With a display on the Pi (Raspberry Pi OS
 with Desktop), add `-s -- --kiosk` to open it full-screen at every boot; `--no-kiosk` turns that off.
 The script installs Docker if needed and keeps RemoteTerm's data in `/opt/meshcorerpi-terminal/data`.
+
+## Repeater setup
+
+A repeater has no companion app: its radio settings live in `/etc/raspberrypimc/repeater.env`,
+everything else is set with its CLI (TCP port 5001), the web dashboard (`http://<pi-ip>:8081`)
+or remotely from a MeshCore app after an admin login.
+
+**1. Install** (a MeshStick is detected and configured automatically):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/engperini/MeshCoreRPI/main/install.sh | sudo bash -s -- repeater
+```
+
+**2. Radio parameters** for your network (example: MeshCore Brasil), then restart:
+
+```bash
+sudo sed -i -E -e 's/^#? ?RPI_FREQ_HZ=.*/RPI_FREQ_HZ=923125000/' -e 's/^#? ?RPI_BW_HZ=.*/RPI_BW_HZ=62500/' \
+  -e 's/^#? ?RPI_SF=.*/RPI_SF=8/' -e 's/^#? ?RPI_CR=.*/RPI_CR=8/' -e 's/^#? ?RPI_TX_DBM=.*/RPI_TX_DBM=20/' \
+  /etc/raspberrypimc/repeater.env
+sudo systemctl restart raspberrypimc-repeater
+sudo journalctl -u raspberrypimc-repeater -b | grep -E "radio-diag|fatal" | tail -1
+```
+
+**3. CLI from the Pi's shell.** Define this helper once per shell session, then run `cli <command>`
+(replies come back as JSON):
+
+```bash
+cli() { exec 3<>/dev/tcp/127.0.0.1/5001; echo "$*" >&3; timeout 2 cat <&3; exec 3>&-; }
+cli get radio
+```
+
+**4. Essential settings:**
+
+| Command | What it does |
+|---|---|
+| `cli password <new>` | Admin password. **Change it**: the default is `password`, and anyone in radio range can log in with it |
+| `cli get public.key` | Show the node's public key (its first 4 hex digits go in the name) |
+| `cli set name <name>` | Node name shown to everyone (convention below) |
+| `cli set path.hash.mode 1` | Path hash size: `0` = 1 byte, `1` = 2 bytes, `2` = 3 bytes. Use what your network uses (MeshCore Brasil: 2 bytes) |
+| `cli region put br` | Define regions one by one, child after parent (`region put <name> [parent]`) |
+| `cli region put br-sp br` | |
+| `cli region put br-sp-11 br-sp` | |
+| `cli region save` | Save the region list (`cli region` lists it) |
+| `cli set advert.interval 60` | Local (zero-hop) advert every N minutes, 60-240 |
+| `cli set flood.advert.interval 3` | Flood advert every N hours, 3-168 (default 12). Floods are repeated mesh-wide: keep it long |
+| `cli advert` | Send an advert now |
+
+**5. Day-to-day checks:**
+
+| Command | Shows |
+|---|---|
+| `cli get radio` | Frequency, bandwidth, SF, CR in use |
+| `cli neighbors` | Repeaters heard directly, with SNR |
+| `cli clock` | Node time (UTC; follows the Pi's clock) |
+| `cli ver` | Firmware version |
+
+**Naming (MeshCore Brasil):** `CIDADE-REGIONAL-PUBKEY`, max 23 characters, e.g. `JUN-COLONIA-E0BD`
+(city UN/LOCODE, neighbourhood, first 4 hex digits of the public key; an amateur callsign may go before the
+key). Use the community's [name generator](https://meshcore.com.br/gerador-de-nomes-para-repetidores-meshcore/).
+
+**Switching roles** (one radio runs one role; each keeps its own config):
+
+```bash
+sudo systemctl disable --now raspberrypimc-companion && sudo systemctl enable --now raspberrypimc-repeater   # to repeater
+sudo systemctl disable --now raspberrypimc-repeater && sudo systemctl enable --now raspberrypimc-companion   # to companion
+```
+
+Both roles use the same node identity (`/var/lib/raspberrypimc/userdata`).
 
 ## Connect a client
 
