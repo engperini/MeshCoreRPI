@@ -552,6 +552,16 @@ void SX1262LinuxRadio::begin() {
   sxClearIrq();
   sxSetRxContinuous();
 
+  // XOSC_START_ERR: the reference oscillator never started, so the radio can
+  // neither receive nor transmit. Boards with a TCXO need RPI_USE_TCXO=1.
+  const uint16_t dev_errors = sxGetDeviceErrors();
+  if ((dev_errors & 0x0020) != 0) {
+    const std::string msg = std::string("SX1262 oscillator failed to start (device errors 0x0020); ") +
+                            (cfg.use_dio3_tcxo ? "check the TCXO voltage/delay" : "this board likely needs RPI_USE_TCXO=1");
+    if (use_ch341) throw std::runtime_error(msg + " (MeshStick: RPI_USE_TCXO=1, RPI_USE_DIO2_RF=1)");
+    std::fprintf(stderr, "warning: %s\n", msg.c_str());
+  }
+
   noise_threshold = DEFAULT_SAMPLING_THRESHOLD;
   floor_samples = 0;
   floor_sample_sum = 0;

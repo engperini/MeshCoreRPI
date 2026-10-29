@@ -61,15 +61,19 @@ for d in /sys/bus/usb/devices/*; do
 done
 if [[ $meshstick -eq 1 ]]; then
   if [[ $had_env -eq 0 ]]; then
-    echo "==> MeshStick detected: setting RPI_RADIO_DRIVER=sx1262_ch341 in $ENV_FILE"
-    if grep -q '^RPI_RADIO_DRIVER=' "$ENV_FILE"; then
-      sed -i 's/^RPI_RADIO_DRIVER=.*/RPI_RADIO_DRIVER=sx1262_ch341/' "$ENV_FILE"
-    else
-      echo 'RPI_RADIO_DRIVER=sx1262_ch341' >> "$ENV_FILE"
-    fi
+    echo "==> MeshStick detected: setting RPI_RADIO_DRIVER=sx1262_ch341 (TCXO + DIO2 RF switch on) in $ENV_FILE"
+    # The MeshStick's SX1262 needs its DIO3-powered TCXO; the template has it off for HATs.
+    for kv in RPI_RADIO_DRIVER=sx1262_ch341 RPI_USE_TCXO=1 RPI_USE_DIO2_RF=1; do
+      key="${kv%%=*}"
+      if grep -q "^${key}=" "$ENV_FILE"; then
+        sed -i "s/^${key}=.*/${kv}/" "$ENV_FILE"
+      else
+        echo "$kv" >> "$ENV_FILE"
+      fi
+    done
   else
     echo "==> MeshStick detected; keeping your existing $ENV_FILE"
-    echo "    (set RPI_RADIO_DRIVER=sx1262_ch341 there if it is not set yet)"
+    echo "    (it needs RPI_RADIO_DRIVER=sx1262_ch341, RPI_USE_TCXO=1 and RPI_USE_DIO2_RF=1)"
   fi
 fi
 
