@@ -8,6 +8,7 @@
 #include <SX127xLinuxRadio.h>
 #include "LittleFS.h"
 
+#include <ctime>
 #include <memory>
 #include <string>
 
@@ -34,9 +35,15 @@ public:
   const char* getShutdownReasonString(uint8_t) override { return "Not available"; }
 };
 
-class LinuxRTCClock : public VolatileRTCClock {
+// Follows the system clock (NTP on a Pi). setCurrentTime() (from a companion
+// app or the `time` CLI command) only shifts it, so the clock never restarts at
+// the 2024 build epoch: peers drop adverts older than one already seen.
+class LinuxRTCClock : public mesh::RTCClock {
+  int64_t offset = 0;
 public:
   void begin() {}
+  uint32_t getCurrentTime() override { return static_cast<uint32_t>(static_cast<int64_t>(std::time(nullptr)) + offset); }
+  void setCurrentTime(uint32_t t) override { offset = static_cast<int64_t>(t) - static_cast<int64_t>(std::time(nullptr)); }
 };
 
 class LinuxRadioDriver : public mesh::Radio {
