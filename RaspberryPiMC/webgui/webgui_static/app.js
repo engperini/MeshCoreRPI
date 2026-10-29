@@ -50,10 +50,10 @@ const app = {
 
 // ─── Leaflet map (init early – dashboard is default tab so div is visible) ──
 const mcMap = L.map('map', { zoomControl: true, closePopupOnClick: false }).setView([20, 0], 2);
-// Dark CartoDB tiles to match pyMC style
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+// OpenStreetMap tiles (no API key; CARTO basemaps now require one), darkened in CSS
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 }).addTo(mcMap);
 const lineLayer   = L.layerGroup().addTo(mcMap);  // paths drawn below markers
 const markerLayer = L.layerGroup().addTo(mcMap);

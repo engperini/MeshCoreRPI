@@ -374,6 +374,8 @@ body[data-role="repeater"]  .tab-pane.repeater-only.active  { display: block; }
 
 /* ─────────────── Leaflet overrides ─────────────── */
 .leaflet-container { font-family: inherit; }
+/* Dark map from standard OSM tiles */
+#map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9); }
 .leaflet-popup-content-wrapper {
   background: var(--card); color: var(--text); border: 1px solid var(--border);
   box-shadow: 0 4px 16px rgba(0,0,0,.5);
