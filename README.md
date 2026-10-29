@@ -148,6 +148,7 @@ Range testing? Let the companion advertise itself every N minutes:
 
 | Symptom | Fix |
 |---|---|
+| `SX1262 oscillator failed to start` / `dev_errors` 32 (`0x0020`) | TCXO off: set `RPI_USE_TCXO=1` (MeshStick also `RPI_USE_DIO2_RF=1`) and restart. |
 | `SX1262 not responding (GetStatus=0xFF)` | Wrong driver/pins, or the stick is not plugged in. For the MeshStick use `RPI_RADIO_DRIVER=sx1262_ch341`. |
 | `CH341 claim interface 0 failed: LIBUSB_ERROR_BUSY` | Another program has the stick (e.g. `meshtasticd`, or a second MeshCoreRPI). Stop it. |
 | `libusb-1.0 not found` | `sudo apt install libusb-1.0-0` |
@@ -296,7 +297,7 @@ RPI_RADIO_DRIVER=sx1262_ch341   # alias: meshstick
 
 - Pins are CH341 D-lines. MeshStick defaults are applied automatically: CS=D0, RESET=D2,
   BUSY=D4, IRQ=D6. Leftover BCM pin numbers in the env file are ignored.
-- `RPI_USE_TCXO` and `RPI_USE_DIO2_RF` default to `1` for this driver.
+- It needs `RPI_USE_TCXO=1` and `RPI_USE_DIO2_RF=1` (the installer sets them; when the keys are absent they default to `1` for this driver).
 - `RPI_SPI_*` settings are not used.
 - Needs `libusb-1.0-0` (`sudo apt-get install -y libusb-1.0-0`), root (the services already run as root),
   and no other program (e.g. `meshtasticd`) holding the dongle.
