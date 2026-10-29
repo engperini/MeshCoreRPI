@@ -521,6 +521,14 @@ int main(int argc, char** argv) {
     // begin() loads persisted prefs and may reset radio params; re-apply
     // explicit runtime CLI radio overrides after begin().
     if (runtime_radio_override) {
+      // Also store them in prefs so the CLI/web UI (`get radio`) shows what the radio uses.
+      NodePrefs* prefs = the_mesh.getNodePrefs();
+      prefs->freq = freq_mhz;
+      prefs->bw = bw_khz;
+      prefs->sf = sf;
+      prefs->cr = cr;
+      prefs->tx_power_dbm = tx_dbm;
+      the_mesh.savePrefs();
       radio_set_params(freq_mhz, bw_khz, sf, cr);
       radio_set_tx_power(tx_dbm);
     }
