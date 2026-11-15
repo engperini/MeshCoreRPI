@@ -77,6 +77,25 @@ if [[ $meshstick -eq 1 ]]; then
   fi
 fi
 
+# Fresh install with a XIAO nRF52840 bridge (2886:8044, xiao-sx1262-usb-bridge firmware): select its driver.
+# The bridge reports TCXO/RF switch/pins itself, so only the driver needs setting.
+xiao=0
+for d in /sys/bus/usb/devices/*; do
+  if [[ -f "$d/idVendor" && "$(cat "$d/idVendor")" == "2886" && "$(cat "$d/idProduct" 2>/dev/null)" == "8044" ]]; then
+    xiao=1
+  fi
+done
+if [[ $xiao -eq 1 && $meshstick -eq 0 ]]; then
+  if [[ $had_env -eq 0 ]]; then
+    echo "==> XIAO nRF52840 detected: setting RPI_RADIO_DRIVER=sx1262_xiao in $ENV_FILE"
+    sed -i "s/^RPI_RADIO_DRIVER=.*/RPI_RADIO_DRIVER=sx1262_xiao/" "$ENV_FILE"
+    grep -q "^RPI_RADIO_DRIVER=" "$ENV_FILE" || echo "RPI_RADIO_DRIVER=sx1262_xiao" >> "$ENV_FILE"
+  else
+    echo "==> XIAO nRF52840 detected; keeping your existing $ENV_FILE"
+    echo "    (with the xiao-sx1262-usb-bridge firmware it needs RPI_RADIO_DRIVER=sx1262_xiao)"
+  fi
+fi
+
 echo "==> Starting raspberrypimc-${ROLE}.service"
 systemctl enable "raspberrypimc-${ROLE}.service" >/dev/null
 systemctl restart "raspberrypimc-${ROLE}.service"

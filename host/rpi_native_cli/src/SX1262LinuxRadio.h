@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ch341Bridge.h"
+#include "XiaoBridge.h"
 #include "LinuxRadioBase.h"
 
 #include <cstdint>
@@ -10,12 +11,19 @@ class SX1262LinuxRadio : public LinuxRadioBase {
 public:
   using Config = LinuxRadioBase::Config;
 
+  // How the SX1262 is reached: Linux spidev + sysfs GPIO, a CH341 USB bridge
+  // (MeshStick), or a XIAO nRF52840 running xiao-sx1262-usb-bridge.
+  enum class Transport { Spidev, Ch341, Xiao };
+
   explicit SX1262LinuxRadio(const Config& cfg, bool use_ch341 = false);
+  SX1262LinuxRadio(const Config& cfg, Transport transport);
   ~SX1262LinuxRadio();
 
   void setConfig(const Config& cfg_) override;
   const Config& getConfig() const override { return cfg; }
-  const char* getDriverName() const override { return use_ch341 ? "sx1262_ch341" : "sx1262"; }
+  const char* getDriverName() const override {
+    return use_xiao ? "sx1262_xiao" : (use_ch341 ? "sx1262_ch341" : "sx1262");
+  }
 
   void begin() override;
   int recvRaw(uint8_t* bytes, int sz) override;
@@ -44,6 +52,15 @@ private:
   Config cfg;
   bool use_ch341 = false;
   Ch341Bridge ch341;
+  bool use_xiao = false;
+  XiaoBridge xiao;
+  // DIO1 edge counters already seen by recvRaw()/isSendComplete(), and when
+  // the IRQ register was last read anyway (XIAO bridge only).
+  uint32_t xiao_dio1_rx = 0;
+  uint32_t xiao_dio1_tx = 0;
+  uint64_t xiao_rx_poll_ms = 0;
+  uint64_t xiao_tx_poll_ms = 0;
+  uint64_t xiao_loop_ms = 0;
   int spi_fd = -1;
   bool tx_pending = false;
   bool started = false;
@@ -68,6 +85,8 @@ private:
   int gpioRead(int pin);
   void gpioPulseReset();
 
+  void applyXiaoBoard();
+  bool xiaoIrqCheckDue(uint32_t& seen, uint64_t& last_poll_ms);
   void verifyChip();
   void applyRfConfig();
   void waitBusyLow();

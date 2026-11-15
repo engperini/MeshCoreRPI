@@ -122,6 +122,7 @@ Radio driver can be selected per runtime:
 RPI_RADIO_DRIVER=sx1262   # Waveshare SX1262 HAT
 # RPI_RADIO_DRIVER=sx127x # SX127x-based modules
 # RPI_RADIO_DRIVER=sx1262_ch341 # USB MeshStick (CH341 1a86:5512); pins default to D0/D2/D4/D6
+# RPI_RADIO_DRIVER=sx1262_xiao  # XIAO nRF52840 + Wio-SX1262 USB bridge (2886:8044); port: RPI_XIAO_PORT
 ```
 
 If `RPI_RADIO_DRIVER` is not set, default is `sx1262`.

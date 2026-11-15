@@ -16,6 +16,8 @@ struct LinuxRadioConfig {
   int irq_pin = 16;
   int txen_pin = -1;
   int rxen_pin = -1;
+  // Serial port of a XIAO USB bridge (sx1262_xiao); empty = auto-detect.
+  std::string serial_port;
 
   bool use_dio3_tcxo = true;
   uint8_t tcxo_voltage = 0x02;
