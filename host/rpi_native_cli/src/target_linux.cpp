@@ -146,6 +146,8 @@ void LinuxRadioDriver::ensureBackend() {
     backend = std::make_unique<SX127xLinuxRadio>(cfg);
   } else if (driver_name == "sx1262_ch341") {
     backend = std::make_unique<SX1262LinuxRadio>(cfg, true);
+  } else if (driver_name == "sx1262_xiao") {
+    backend = std::make_unique<SX1262LinuxRadio>(cfg, SX1262LinuxRadio::Transport::Xiao);
   } else {
     driver_name = "sx1262";
     backend = std::make_unique<SX1262LinuxRadio>(cfg);
@@ -157,6 +159,8 @@ void LinuxRadioDriver::setDriverName(const std::string& name) {
     driver_name = "sx127x";
   } else if (radio_driver_is_ch341(name.c_str())) {
     driver_name = "sx1262_ch341";
+  } else if (radio_driver_is_xiao(name.c_str())) {
+    driver_name = "sx1262_xiao";
   } else {
     driver_name = "sx1262";
   }
@@ -175,6 +179,8 @@ void LinuxRadioDriver::setConfig(const LinuxRadioConfig& cfg_) {
 }
 
 const LinuxRadioConfig& LinuxRadioDriver::getConfig() const {
+  // A USB bridge may report wiring (TCXO, RF switch, pins) the backend uses.
+  if (backend && driver_name == "sx1262_xiao") return backend->getConfig();
   return cfg;
 }
 
@@ -335,11 +341,24 @@ bool radio_driver_is_ch341(const char* driver_name) {
   return name == "sx1262_ch341" || name == "meshstick";
 }
 
+bool radio_driver_is_xiao(const char* driver_name) {
+  if (!driver_name) return false;
+  const std::string name(driver_name);
+  return name == "sx1262_xiao" || name == "xiao";
+}
+
+void radio_set_serial_port(const char* port) {
+  g_cfg.serial_port = port ? port : "";
+  radio_driver.setConfig(g_cfg);
+}
+
 void radio_set_driver(const char* driver_name) {
   if (driver_name && std::string(driver_name) == "sx127x") {
     g_driver_name = "sx127x";
   } else if (radio_driver_is_ch341(driver_name)) {
     g_driver_name = "sx1262_ch341";
+  } else if (radio_driver_is_xiao(driver_name)) {
+    g_driver_name = "sx1262_xiao";
   } else {
     g_driver_name = "sx1262";
   }

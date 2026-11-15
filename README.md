@@ -40,6 +40,7 @@ a Debian package, a systemd service and one config file.
 | Radio | How it connects | `RPI_RADIO_DRIVER` | Status |
 |---|---|---|---|
 | USB MeshStick (CH341A + SX1262) | USB | `sx1262_ch341` | ✅ Tested: RX, TX, DMs, channels |
+| XIAO nRF52840 + Wio-SX1262 with [xiao-sx1262-usb-bridge](https://github.com/engperini/xiao-sx1262-usb-bridge) | USB serial | `sx1262_xiao` | ✅ Tested: RX, TX |
 | SX1262 HAT (e.g. Waveshare) | SPI + GPIO | `sx1262` (default) | ✅ Tested |
 | SX127x module | SPI + GPIO | `sx127x` | ⚠️ Supported, less tested |
 
@@ -282,7 +283,7 @@ RPI_CR=8
 RPI_TX_DBM=22
 
 # Radio backend selector
-RPI_RADIO_DRIVER=sx1262   # or: sx127x, sx1262_ch341 (USB MeshStick)
+RPI_RADIO_DRIVER=sx1262   # or: sx127x, sx1262_ch341 (USB MeshStick), sx1262_xiao (XIAO USB bridge)
 
 # SPI device node prefix (default: /dev/spidev)
 RPI_SPI_DEV_PREFIX=/dev/spidev
@@ -374,6 +375,36 @@ RPI_RADIO_DRIVER=sx1262_ch341   # alias: meshstick
 
 Expected in `radio-diag`: `"driver":"sx1262_ch341"` and a `status` other than 0 or 255
 (in RX mode it is typically 0x5X, i.e. 80..95).
+
+### XIAO nRF52840 + Wio-SX1262 USB bridge profile
+
+A Seeed XIAO nRF52840 with the Wio-SX1262 board, flashed with
+[xiao-sx1262-usb-bridge](https://github.com/engperini/xiao-sx1262-usb-bridge), shows up as a USB
+serial port (`lsusb` → `2886:8044`, `/dev/ttyACM0`). The Pi drives the SX1262 through it:
+
+```dotenv
+RPI_RADIO_DRIVER=sx1262_xiao   # alias: xiao
+# Optional; empty = first /dev/serial/by-id/usb-Seeed_XIAO_nRF52840_*-if00, then /dev/ttyACM0
+RPI_XIAO_PORT=/dev/serial/by-id/usb-Seeed_XIAO_nRF52840_<serial>-if00
+RPI_TX_DBM=22                  # SX1262 maximum
+```
+
+- The driver opens the port with DTR asserted and speaks the bridge protocol (`docs/PROTOCOL.md` in
+  the bridge repo): each SX1262 command is one SPI_TRANSFER request with chip select and BUSY wait
+  done by the bridge, so one USB round trip per command.
+- The bridge's HELLO reports the board wiring, and it wins over the env file: TCXO on DIO3
+  (1.8 V on the Wio-SX1262), DIO2 as RF switch, and the RXEN pin. `RPI_USE_TCXO`, `RPI_USE_DIO2_RF`,
+  `RPI_*_PIN` and `RPI_SPI_*` are not used. Pins in `radio-diag` are the bridge's logical ids
+  (0 NSS, 1 RESET, 2 BUSY, 3 DIO1, 4 RXEN, 5 TXEN).
+- DIO1 rising edges arrive as bridge events; the driver reads the IRQ register when one arrives
+  (and every 200 ms as a fallback) instead of polling it on every loop.
+- Startup prints a `xiao-bridge: port=... fw=... tcxo_mv=1800 dio2_rf=1 rxen=1 ...` line, and fails
+  with `SX1262 not responding` or `did not answer as a bridge` if the radio or firmware is missing.
+- The services run as root; to run by hand as a normal user, add it to the `dialout` group.
+  Stop anything else using the port (e.g. a serial monitor).
+
+Expected in `radio-diag`: `"driver":"sx1262_xiao"`, `"tcxo":1`, `"dio2_rf":1` and a `status`
+other than 0 or 255.
 
 ### Companion periodic advert (minutes)
 

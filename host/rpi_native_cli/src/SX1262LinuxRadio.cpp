@@ -26,12 +26,25 @@ constexpr uint16_t IRQ_TIMEOUT = 0x0200;
 constexpr uint16_t NUM_NOISE_FLOOR_SAMPLES = 64;
 constexpr int16_t DEFAULT_SAMPLING_THRESHOLD = 14;
 
+// With the XIAO bridge the IRQ register is read when a DIO1 event arrived, or
+// at least this often in case an event was missed.
+constexpr uint64_t XIAO_IRQ_FALLBACK_MS = 200;
+constexpr uint64_t XIAO_LOOP_INTERVAL_MS = 50;
+
+uint64_t nowMs() {
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
 std::string gpioPath(int pin, const std::string& node) {
   return "/sys/class/gpio/gpio" + std::to_string(pin) + "/" + node;
 }
 }
 
 SX1262LinuxRadio::SX1262LinuxRadio(const Config& cfg_, bool use_ch341_) : cfg(cfg_), use_ch341(use_ch341_) {}
+
+SX1262LinuxRadio::SX1262LinuxRadio(const Config& cfg_, Transport transport)
+  : cfg(cfg_), use_ch341(transport == Transport::Ch341), use_xiao(transport == Transport::Xiao) {}
 
 SX1262LinuxRadio::~SX1262LinuxRadio() {
 #ifdef __linux__
@@ -86,6 +99,22 @@ std::string SX1262LinuxRadio::gpioNodePath(int pin, const std::string& node) {
 }
 
 void SX1262LinuxRadio::openSpi() {
+  if (use_xiao) {
+    // begin() runs twice at startup (radio_init and Dispatcher::begin); the port stays open.
+    if (xiao.isOpen()) {
+      applyXiaoBoard();
+      return;
+    }
+    xiao.open(cfg.serial_port);
+    applyXiaoBoard();
+    const XiaoBridge::BoardInfo& b = xiao.info();
+    std::printf("xiao-bridge: port=%s board=\"%s\" id=%u fw=%u.%u.%u proto=%u tcxo_mv=%d dio2_rf=%d rxen=%d txen=%d"
+                " dio1_events=%d max_xfer=%zu\n",
+                xiao.portPath().c_str(), b.name.c_str(), b.board_id, b.fw_major, b.fw_minor, b.fw_patch, b.protocol,
+                b.tcxo_mv, b.dio2_rf_switch ? 1 : 0, b.has_rxen ? 1 : 0, b.has_txen ? 1 : 0, b.dio1_events ? 1 : 0,
+                b.max_transfer);
+    return;
+  }
   if (use_ch341) {
     ch341.open();
     return;
@@ -116,6 +145,11 @@ void SX1262LinuxRadio::openSpi() {
 void SX1262LinuxRadio::spiTransfer(const uint8_t* tx, uint8_t* rx, size_t len) {
 #ifdef __linux__
   if (len == 0) return;
+  if (use_xiao) {
+    // NSS, BUSY wait and the transfer are handled by the bridge.
+    xiao.spiCommand(tx, rx, len);
+    return;
+  }
   if (use_ch341) {
     // SX126x NSS is active low; the CH341 SPI stream does not drive it.
     ch341.digitalWrite(cfg.cs_pin, false);
@@ -148,7 +182,7 @@ void SX1262LinuxRadio::spiTransfer(const uint8_t* tx, uint8_t* rx, size_t len) {
 }
 
 void SX1262LinuxRadio::gpioExport(int pin) {
-  if (pin < 0 || use_ch341) return;
+  if (pin < 0 || use_ch341 || use_xiao) return;
 
   const int sysfs_pin = toSysfsPin(pin);
   std::ofstream ex("/sys/class/gpio/export");
@@ -163,6 +197,7 @@ void SX1262LinuxRadio::gpioExport(int pin) {
 
 void SX1262LinuxRadio::gpioDirection(int pin, const char* mode) {
   if (pin < 0) return;
+  if (use_xiao) return;  // pin directions are fixed by the bridge firmware
   if (use_ch341) {
     ch341.pinMode(pin, std::strcmp(mode, "out") == 0);
     return;
@@ -174,6 +209,10 @@ void SX1262LinuxRadio::gpioDirection(int pin, const char* mode) {
 
 void SX1262LinuxRadio::gpioWrite(int pin, int value) {
   if (pin < 0) return;
+  if (use_xiao) {
+    xiao.digitalWrite(pin, value != 0);
+    return;
+  }
   if (use_ch341) {
     ch341.digitalWrite(pin, value != 0);
     return;
@@ -185,6 +224,7 @@ void SX1262LinuxRadio::gpioWrite(int pin, int value) {
 
 int SX1262LinuxRadio::gpioRead(int pin) {
   if (pin < 0) return 0;
+  if (use_xiao) return xiao.digitalRead(pin) ? 1 : 0;
   if (use_ch341) return ch341.digitalRead(pin) ? 1 : 0;
 
   std::ifstream v(gpioNodePath(pin, "value"));
@@ -194,6 +234,10 @@ int SX1262LinuxRadio::gpioRead(int pin) {
 }
 
 void SX1262LinuxRadio::gpioPulseReset() {
+  if (use_xiao) {
+    xiao.radioReset();
+    return;
+  }
   if (cfg.reset_pin < 0) return;
   gpioWrite(cfg.reset_pin, 0);
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -202,7 +246,7 @@ void SX1262LinuxRadio::gpioPulseReset() {
 }
 
 void SX1262LinuxRadio::waitBusyLow() {
-  if (cfg.busy_pin < 0) return;
+  if (cfg.busy_pin < 0 || use_xiao) return;  // the bridge waits for BUSY itself
   for (int i = 0; i < 200; ++i) {
     if (gpioRead(cfg.busy_pin) == 0) return;
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -504,7 +548,7 @@ void SX1262LinuxRadio::begin() {
 #endif
 
   // The CH341 carries both SPI and the control pins, so it must be open first.
-  if (use_ch341) openSpi();
+  if (use_ch341 || use_xiao) openSpi();
 
   // GPIO setup (sysfs) for SX1262 control pins.
   gpioExport(cfg.cs_pin);
@@ -524,7 +568,7 @@ void SX1262LinuxRadio::begin() {
   // Inactive high for manual CS.
   if (cfg.cs_pin >= 0) gpioWrite(cfg.cs_pin, 1);
 
-  if (!use_ch341) openSpi();
+  if (!use_ch341 && !use_xiao) openSpi();
   gpioPulseReset();
 
   sxSetStandby();
@@ -552,6 +596,13 @@ void SX1262LinuxRadio::begin() {
   sxClearIrq();
   sxSetRxContinuous();
 
+  if (use_xiao) {
+    // Wio-SX1262: RF switch in the receive position.
+    if (cfg.txen_pin >= 0) gpioWrite(cfg.txen_pin, 0);
+    if (cfg.rxen_pin >= 0) gpioWrite(cfg.rxen_pin, 1);
+    xiao_dio1_rx = xiao_dio1_tx = xiao.pollDio1();
+  }
+
   // XOSC_START_ERR: the reference oscillator never started, so the radio can
   // neither receive nor transmit. Boards with a TCXO need RPI_USE_TCXO=1.
   const uint16_t dev_errors = sxGetDeviceErrors();
@@ -559,6 +610,7 @@ void SX1262LinuxRadio::begin() {
     const std::string msg = std::string("SX1262 oscillator failed to start (device errors 0x0020); ") +
                             (cfg.use_dio3_tcxo ? "check the TCXO voltage/delay" : "this board likely needs RPI_USE_TCXO=1");
     if (use_ch341) throw std::runtime_error(msg + " (MeshStick: RPI_USE_TCXO=1, RPI_USE_DIO2_RF=1)");
+    if (use_xiao) throw std::runtime_error(msg + " via XIAO bridge; check that the Wio-SX1262 is seated on the XIAO");
     std::fprintf(stderr, "warning: %s\n", msg.c_str());
   }
 
@@ -568,8 +620,48 @@ void SX1262LinuxRadio::begin() {
   started = true;
 }
 
+// The XIAO bridge reports how its radio is wired (TCXO on DIO3, DIO2 RF
+// switch, RXEN/TXEN); that wins over the env/CLI settings. Pins are the
+// bridge's logical ids.
+void SX1262LinuxRadio::applyXiaoBoard() {
+  if (!use_xiao || !xiao.isOpen()) return;
+  const XiaoBridge::BoardInfo& b = xiao.info();
+  cfg.cs_pin = XiaoBridge::PIN_NSS;
+  cfg.reset_pin = XiaoBridge::PIN_RESET;
+  cfg.busy_pin = XiaoBridge::PIN_BUSY;
+  cfg.irq_pin = XiaoBridge::PIN_DIO1;
+  cfg.rxen_pin = b.has_rxen ? XiaoBridge::PIN_RXEN : -1;
+  cfg.txen_pin = b.has_txen ? XiaoBridge::PIN_TXEN : -1;
+  cfg.use_dio2_rf_switch = b.dio2_rf_switch;
+  cfg.use_dio3_tcxo = b.tcxo_mv > 0;
+  if (b.tcxo_mv > 0) {
+    // SetDio3AsTcxoCtrl voltage codes: the highest one not above the board's.
+    static const int kTcxoMv[] = {1600, 1700, 1800, 2200, 2400, 2700, 3000, 3300};
+    uint8_t code = 0;
+    for (uint8_t i = 0; i < 8; ++i) {
+      if (kTcxoMv[i] <= b.tcxo_mv) code = i;
+    }
+    cfg.tcxo_voltage = code;
+  }
+  cfg.serial_port = xiao.portPath();
+}
+
+// True when the SX1262 IRQ register should be read now: a DIO1 edge arrived
+// since the last check, or the fallback interval passed.
+bool SX1262LinuxRadio::xiaoIrqCheckDue(uint32_t& seen, uint64_t& last_poll_ms) {
+  const uint32_t count = xiao.pollDio1();
+  const uint64_t now = nowMs();
+  if (xiao.dio1EventsEnabled() && count == seen && now - last_poll_ms < XIAO_IRQ_FALLBACK_MS) {
+    return false;
+  }
+  seen = count;
+  last_poll_ms = now;
+  return true;
+}
+
 void SX1262LinuxRadio::setConfig(const Config& cfg_) {
   cfg = cfg_;
+  applyXiaoBoard();
   if (!started) return;
   // Radio params (e.g. from saved prefs or the companion app) can change after
   // begin(); push them to the chip, but never in the middle of a TX.
@@ -602,6 +694,9 @@ void SX1262LinuxRadio::verifyChip() {
   char hex[8];
   std::snprintf(hex, sizeof(hex), "0x%02X", st);
   const std::string msg = std::string("SX1262 not responding (GetStatus=") + hex + ")";
+  if (use_xiao) {
+    throw std::runtime_error(msg + " via XIAO bridge; check that the Wio-SX1262 is seated on the XIAO and the antenna is connected");
+  }
   if (use_ch341) {
     throw std::runtime_error(msg + " via CH341; check the dongle, antenna and RPI_CS/RESET/BUSY pins (MeshStick: 0/2/4)");
   }
@@ -625,6 +720,7 @@ void SX1262LinuxRadio::debugClearDeviceErrors() {
 }
 
 int SX1262LinuxRadio::recvRaw(uint8_t* bytes, int sz) {
+  if (use_xiao && !xiaoIrqCheckDue(xiao_dio1_rx, xiao_rx_poll_ms)) return 0;
   const uint16_t irq = sxGetIrq();
   if ((irq & IRQ_RX_DONE) == 0) {
     // Keep ambient noise estimate alive while idling in RX mode.
@@ -686,6 +782,7 @@ bool SX1262LinuxRadio::startSendRaw(const uint8_t* bytes, int len) {
 
 bool SX1262LinuxRadio::isSendComplete() {
   if (!tx_pending) return false;
+  if (use_xiao && !xiaoIrqCheckDue(xiao_dio1_tx, xiao_tx_poll_ms)) return false;
   const uint16_t irq = sxGetIrq();
   if ((irq & IRQ_TIMEOUT) != 0) {
     sxClearIrq();
@@ -719,6 +816,12 @@ bool SX1262LinuxRadio::isReceiving() {
 void SX1262LinuxRadio::loop() {
   if (!isInRecvMode()) {
     return;
+  }
+  if (use_xiao) {
+    // Each register read is a USB round trip; sample the noise floor less often.
+    const uint64_t now = nowMs();
+    if (now - xiao_loop_ms < XIAO_LOOP_INTERVAL_MS) return;
+    xiao_loop_ms = now;
   }
 
   if (floor_samples >= NUM_NOISE_FLOOR_SAMPLES) {

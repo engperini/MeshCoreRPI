@@ -417,6 +417,7 @@ int main(int argc, char** argv) {
   int8_t tx_dbm = static_cast<int8_t>(envInt("RPI_TX_DBM", 22));
   bool runtime_radio_override = env_radio_override;
   std::string radio_driver_name = envString("RPI_RADIO_DRIVER", "sx1262");
+  std::string xiao_port = envString("RPI_XIAO_PORT", "");
 
   int spi_bus = envInt("RPI_SPI_BUS", 0);
   int spi_cs = envInt("RPI_SPI_CS", 0);
@@ -457,6 +458,7 @@ int main(int argc, char** argv) {
       runtime_radio_override = true;
     }
     else if (a == "--radio-driver" && i + 1 < argc) radio_driver_name = argv[++i];
+    else if (a == "--xiao-port" && i + 1 < argc) xiao_port = argv[++i];
     else if (a == "--spi-dev-prefix" && i + 1 < argc) spi_dev_prefix = argv[++i];
     else if (a == "--spi-bus" && i + 1 < argc) spi_bus = std::stoi(argv[++i]);
     else if (a == "--spi-cs" && i + 1 < argc) spi_cs = std::stoi(argv[++i]);
@@ -472,7 +474,7 @@ int main(int argc, char** argv) {
     else if (a == "--no-dio2-rf") { use_dio2_rf_switch = false; dio2_flag = true; }
     else if (a == "--help") {
       std::cout << "Usage: meshcore-rpi-native-repeater [--freq HZ] [--sf N] [--bw HZ] [--cr N] [--tx DBM]"
-                   " [--radio-driver sx1262|sx1262_ch341|sx127x]"
+                   " [--radio-driver sx1262|sx1262_ch341|sx1262_xiao|sx127x] [--xiao-port PATH]"
                    " [--spi-dev-prefix PATH] [--spi-bus N] [--spi-cs N] [--spi-speed HZ]"
                    " [--cs-pin N] [--reset-pin N] [--busy-pin N] [--irq-pin N] [--txen-pin N] [--rxen-pin N]"
                    " [--tcp-port N]"
@@ -489,6 +491,7 @@ int main(int argc, char** argv) {
   }
 
   radio_set_driver(radio_driver_name.c_str());
+  radio_set_serial_port(xiao_port.c_str());
   radio_set_hw_config(spi_dev_prefix.c_str(), spi_bus, spi_cs, spi_speed_hz, cs_pin, reset_pin, busy_pin, irq_pin, txen_pin, rxen_pin,
                       use_dio3_tcxo, use_dio2_rf_switch);
   radio_set_params(freq_mhz, bw_khz, sf, cr);
