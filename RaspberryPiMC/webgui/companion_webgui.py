@@ -65,6 +65,7 @@ RESP_CODE_CHANNEL_INFO = 0x12
 RESP_CODE_STATS = 24
 
 PUSH_CODE_ADVERT = 0x80
+PUSH_CODE_SEND_CONFIRMED = 0x82
 PUSH_CODE_MSG_WAITING = 0x83
 PUSH_CODE_LOG_RX_DATA = 0x88
 PUSH_CODE_NEW_ADVERT = 0x8A
@@ -835,7 +836,8 @@ class CompanionClient:
         self._seen_connected_once = False
         self.on_connected = on_connected
         self._was_connected = False
-        self._pending_ack_ids: list[str] = []  # msg_ids awaiting RESP_CODE_MSG_SENT
+        self._pending_ack_ids: list[str] = []  # DM msg_ids awaiting RESP_CODE_MSG_SENT
+        self._ack_to_msg: dict[bytes, str] = {}  # expected ACK code -> DM msg_id
         self._private_key_event = threading.Event()
         self._private_key_lock = threading.Lock()
         self._last_private_key_hex: str | None = None
@@ -1232,10 +1234,15 @@ class CompanionClient:
             # Fetch the next queued message automatically
             self.send_cmd(bytes([CMD_SYNC_NEXT_MESSAGE]))
         elif payload_type == RESP_CODE_MSG_SENT:
-            # Acknowledge oldest pending outbound message
+            # Reply to a DM send: [code][flood][expected_ack:4][est_timeout:4].
+            # Channel sends are answered with RESP_CODE_OK and are not queued here.
             if self._pending_ack_ids:
                 ack_id = self._pending_ack_ids.pop(0)
                 self.state.mark_message_status(ack_id, "sent")
+                if len(payload) >= 6:
+                    self._ack_to_msg[bytes(payload[2:6])] = ack_id
+                    if len(self._ack_to_msg) > 64:
+                        self._ack_to_msg.pop(next(iter(self._ack_to_msg)))
             self._fallback_tx_packets += 1
             packets = dict(self.state.stats.get("packets", {}))
             current_sent = int(packets.get("sent", 0) or 0)
@@ -1245,6 +1252,11 @@ class CompanionClient:
             self.state.add_event("pkt_tx", {
                 "count": 1, "total": int(self.state.stats.get("packets", {}).get("sent", self._fallback_tx_packets)),
             })
+        elif payload_type == PUSH_CODE_SEND_CONFIRMED and len(payload) >= 5:
+            # The recipient's ACK arrived: [code][ack:4][round_trip_ms:4]
+            msg_id = self._ack_to_msg.pop(bytes(payload[1:5]), None)
+            if msg_id:
+                self.state.mark_message_status(msg_id, "delivered")
         elif payload_type == RESP_CODE_NO_MORE_MSGS:
             pass  # No more queued messages — nothing to do
         elif payload_type == PUSH_CODE_ADVERT and len(payload) >= 33:
@@ -1296,6 +1308,7 @@ class CompanionClient:
             RESP_CODE_CONTACT_MSG,
             RESP_CODE_CONTACT_MSG_V3,
             RESP_CODE_MSG_SENT,
+            PUSH_CODE_SEND_CONFIRMED,
             PUSH_CODE_LOG_RX_DATA,
             PUSH_CODE_MSG_WAITING,
         )
@@ -1364,7 +1377,10 @@ class CompanionClient:
                     expired_ids: list[str] = []
                     with self.state._lock:
                         for m in self.state.messages:
-                            if m.get("outbound") and m.get("status") == "pending" and now_ts - m.get("ts", now_ts) > 15:
+                            age = now_ts - m.get("ts", now_ts)
+                            dm = str(m.get("msg_id", "")).startswith("dm_")
+                            if m.get("outbound") and ((m.get("status") == "pending" and age > 15)
+                                                      or (dm and m.get("status") == "sent" and age > 60)):
                                 m["status"] = "failed"
                                 expired_any = True
                                 if m.get("msg_id"):
@@ -2403,11 +2419,10 @@ class App:
                 "text": text.decode("utf-8", errors="replace"),
                 "snr": None,
                 "outbound": True,
-                "status": "pending",
+                "status": "sent",
                 "msg_id": msg_id,
             }
             self.state.append_message(out_msg, max_messages=500)
-            self.client._pending_ack_ids.append(msg_id)
             self.state.add_event(
                 "chan_msg_sent",
                 {

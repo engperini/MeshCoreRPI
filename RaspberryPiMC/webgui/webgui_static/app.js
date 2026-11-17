@@ -1563,7 +1563,8 @@ function renderMessages(snap) {
     let statusHtml = '';
     if (m.outbound) {
       if      (m.status === 'pending') statusHtml = '<span class="ch-status pending">&#9201; Sending\u2026</span>';
-      else if (m.status === 'sent')    statusHtml = '<span class="ch-status sent">&#10003; Delivered</span>';
+      else if (m.status === 'sent')    statusHtml = '<span class="ch-status sent">&#10003; Sent</span>';
+      else if (m.status === 'delivered') statusHtml = '<span class="ch-status sent">&#10003;&#10003; Delivered</span>';
       else if (m.status === 'failed')  statusHtml = '<span class="ch-status failed">&#9888; Failed</span>';
     }
     return `<div class="ch-bubble ${dir}">
@@ -1669,7 +1670,8 @@ function renderChannels(snap) {
     let statusHtml = '';
     if (m.outbound) {
       if      (m.status === 'pending') statusHtml = '<span class="ch-status pending">&#9201; Sending\u2026</span>';
-      else if (m.status === 'sent')    statusHtml = '<span class="ch-status sent">&#10003; Delivered</span>';
+      else if (m.status === 'sent')    statusHtml = '<span class="ch-status sent">&#10003; Sent</span>';
+      else if (m.status === 'delivered') statusHtml = '<span class="ch-status sent">&#10003;&#10003; Delivered</span>';
       else if (m.status === 'failed')  statusHtml = '<span class="ch-status failed">&#9888; Failed</span>';
     }
     return `<div class="ch-bubble ${dir}">
