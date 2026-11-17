@@ -1,3 +1,14 @@
+
+// MeshCore path length byte: bits 7-6 = path hash size - 1, bits 5-0 = hop count, 0xFF = unknown/flood.
+function hopCount(raw) {
+  if (raw === null || raw === undefined || raw < 0 || raw >= 255) return null;
+  return raw & 0x3F;
+}
+function hopLabel(raw) {
+  const h = hopCount(raw);
+  if (h === null) return '';
+  return h === 0 ? 'Direct' : `${h} hop${h !== 1 ? 's' : ''}`;
+}
 /* ═══════════════════════════════════════════════════
    MeshCore Web GUI  –  app.js
    ═══════════════════════════════════════════════════ */
@@ -728,9 +739,8 @@ function updateMap(snap) {
     onMap++;
     const m = L.marker([c.lat, c.lon], { icon: markerIconForKind(k, false) });
     m._mcPopupKey = c.pubkey;
-    const hops = c.out_path_len;
-    const hopStr = (hops === 0 || hops === null || hops === undefined)
-      ? 'Direct' : (hops < 255 ? `${hops} hop${hops !== 1 ? 's' : ''}` : '–');
+    const hops = hopCount(c.out_path_len);
+    const hopStr = hops === null ? '–' : hopLabel(c.out_path_len);
     const snrStr = c.snr != null ? ` · SNR ${c.snr} dB` : '';
     m.bindPopup(
       `<div style="min-width:160px"><b>${c.name || c.pubkey.slice(0, 12)}</b><br>` +
@@ -749,7 +759,7 @@ function updateMap(snap) {
 
     // Draw path polyline from self to contact (only when we know self pos)
     if (selfOnMap) {
-      const hopsN = (hops === null || hops === undefined) ? 255 : hops;
+      const hopsN = hops === null ? 255 : hops;
       let lineOpts;
       if (hopsN === 0)      lineOpts = { color: '#00ff88', weight: 2.5, opacity: 0.8 };
       else if (hopsN <= 2)  lineOpts = { color: '#58a6ff', weight: 2.0, opacity: 0.7, dashArray: '6,4' };
@@ -1075,8 +1085,8 @@ function renderContacts(snap, filter = '') {
     const nameB = (b.name || '').toLowerCase();
     const snrA = Number.isFinite(a.snr) ? a.snr : -9999;
     const snrB = Number.isFinite(b.snr) ? b.snr : -9999;
-    const hopsA = (a.out_path_len == null || a.out_path_len >= 255) ? 999 : a.out_path_len;
-    const hopsB = (b.out_path_len == null || b.out_path_len >= 255) ? 999 : b.out_path_len;
+    const hopsA = hopCount(a.out_path_len) ?? 999;
+    const hopsB = hopCount(b.out_path_len) ?? 999;
     const seenA = Number(a.last_advert_timestamp || 0);
     const seenB = Number(b.last_advert_timestamp || 0);
 
@@ -1103,7 +1113,7 @@ function renderContacts(snap, filter = '') {
     }
     return contacts.slice(0, 250).map(c => {
       const loc = hasLoc(c) ? `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}` : '–';
-      const hops = c.out_path_len;
+      const hops = hopCount(c.out_path_len);
       const hopStr = (hops === 0) ? 'Direct'
                    : (hops > 0 && hops < 255) ? `${hops} hop${hops !== 1 ? 's' : ''}` : '–';
       const snrStr = c.snr != null ? `${c.snr} dB` : '–';
@@ -1557,7 +1567,7 @@ function renderMessages(snap) {
   msgArea.innerHTML = convoMsgs.map(m => {
     const dir       = m.outbound ? 'outbound' : 'inbound';
     const snrStr    = m.snr  != null ? `SNR ${m.snr} dB` : '';
-    const hopStr    = m.path_len === 0 ? 'Direct' : m.path_len > 0 ? `${m.path_len} hop${m.path_len !== 1 ? 's' : ''}` : '';
+    const hopStr    = hopLabel(m.path_len);
     const metaParts = [m.outbound ? 'You' : '', fmtMsgTime(m.ts)].filter(Boolean);
     const footerParts = [hopStr, snrStr].filter(Boolean);
     let statusHtml = '';
@@ -1663,7 +1673,7 @@ function renderChannels(snap) {
   msgArea.innerHTML = chMsgs.map(m => {
     const dir = m.outbound ? 'outbound' : 'inbound';
     const snrStr  = m.snr  != null ? `SNR ${m.snr} dB` : '';
-    const hopStr  = m.path_len === 0 ? 'Direct' : m.path_len > 0 ? `${m.path_len} hop${m.path_len !== 1 ? 's' : ''}` : '';
+    const hopStr  = hopLabel(m.path_len);
     const metaParts = [m.outbound ? 'You' : '', fmtMsgTime(m.ts)].filter(Boolean);
     const footerParts = [hopStr, snrStr].filter(Boolean);
     // Delivery status for outbound messages
