@@ -83,7 +83,11 @@ choose_role() {
 install_package_role() {
   local role="$1"
   bash "$SCRIPT_DIR/build_deb.sh" "$role"
-  sudo dpkg -i "$SCRIPT_DIR"/dist/raspberrypimc-native-"$role"_*.deb
+  # dist/ keeps older builds: install only the package just built (newest file).
+  local deb
+  deb="$(ls -t "$SCRIPT_DIR"/dist/raspberrypimc-native-"$role"_*.deb | head -n1)"
+  echo "Installing $deb"
+  sudo dpkg -i "$deb"
 }
 
 start_package_role() {
