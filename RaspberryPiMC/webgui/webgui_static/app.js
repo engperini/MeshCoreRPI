@@ -1940,20 +1940,19 @@ function renderRegionList(regions) {
 // If snap.history is empty or absent the accumulated history is unchanged.
 function _mergeHistory(snap) {
   const h = snap?.history;
-  // If the incoming snapshot has no history payload, reset the accumulated
-  // client-side history to avoid retaining older points across reconnects.
-  if (!h || !h.ts || !h.ts.length) {
-    app.history = {};
-    return;
-  }
-  if (!app.history.ts || !app.history.ts.length) {
-    // First delivery or reset — replace wholesale
+  // Event-driven snapshots carry no history on purpose (only heartbeats and the
+  // WS init do). Keep what we have: resetting here made the CPU/RAM and Charts
+  // graphs flash "Collecting data..." on every received packet. Reconnects and
+  // "Clear stats" reset app.history explicitly.
+  if (!h || !h.ts || !h.ts.length) return;
+  const known = app.history.ts && app.history.ts.length ? app.history.ts[app.history.ts.length - 1] : null;
+  if (known === null || h.ts[h.ts.length - 1] < known) {
+    // First delivery, reset, or the server restarted (its clock went back): replace wholesale.
     app.history = {};
     for (const k of Object.keys(h)) app.history[k] = [...(h[k] || [])];
     return;
   }
-  const lastKnown = app.history.ts[app.history.ts.length - 1];
-  const newIdxs = h.ts.reduce((acc, t, i) => { if (t > lastKnown) acc.push(i); return acc; }, []);
+  const newIdxs = h.ts.reduce((acc, t, i) => { if (t > known) acc.push(i); return acc; }, []);
   if (!newIdxs.length) return;
   for (const k of Object.keys(h)) {
     if (!app.history[k]) app.history[k] = [];
