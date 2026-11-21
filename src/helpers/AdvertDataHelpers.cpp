@@ -35,8 +35,9 @@
     _has_loc = false;
   
     int i = 1;
-    // Parse lat/lon if there's enough data and either flag is set or no feature flags are set
-    if (i + 8 <= app_data_len && (_flags & ADV_LATLON_MASK || !(_flags & (ADV_FEAT1_MASK | ADV_FEAT2_MASK)))) {
+    // Lat/lon are present only when the flag says so (as in upstream MeshCore). Guessing them
+    // from "no feature flags" ate the first 8 bytes of the name of adverts without a location.
+    if ((_flags & ADV_LATLON_MASK) && i + 8 <= app_data_len) {
       memcpy(&_lat, &app_data[i], 4); i += 4;
       memcpy(&_lon, &app_data[i], 4); i += 4;
       _has_loc = true;
